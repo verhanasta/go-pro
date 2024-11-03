@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	//"time"
+	"time"
 )
 
-func parseReq(statsStr string) ([]float64, error) {
+func parseResponse(statsStr string) ([]float64, error) {
 
 	resultValues := make([]float64, 0, 7)
 
@@ -19,15 +19,17 @@ func parseReq(statsStr string) ([]float64, error) {
 		return nil, fmt.Errorf("unexpected number of stats")
 	}
 	for i := 0; i < len(statsStrItems); i++ {
-		resultValues[i], err = strconv.ParseFloat(statsStrItems[i], 64)
+		number, err := strconv.ParseFloat(strings.TrimSpace(statsStrItems[i]), 64)
 		if err != nil {
 			return nil, err
 		}
+		resultValues[i] = number
 	}
+
 	return resultValues, nil
 }
 
-func analizeStats(statsSlice []float64){
+func analyzeStats(statsSlice []float64){
 
 	loadAverage := statsSlice[0]
 	totalMemory := statsSlice[1]
@@ -37,30 +39,41 @@ func analizeStats(statsSlice []float64){
 	totalBandwidth := statsSlice[5]
 	usedBandwidth := statsSlice[6]
 
+	messages := []string{}
+
+	
 	if loadAverage > 30 {
-		fmt.Println("Load Average is too high: ", 30)
-	}
-	if usedMemory > (totalMemory * 0.8) {
-		fmt.Println("Memory usage too high: ", usedMemory  / totalMemory * 100, "%")
-	}
-	if usedDisk  > (totalDisk * 0.9) {
-		fmt.Println("Memory usage too high: ", usedDisk / totalDisk * 100, "%")
+		messages = append(messages, fmt.Sprintf("Load Average is too high: %.2f", loadAverage))
 	}
 
-	if usedBandwidth  > (totalBandwidth * 0.9) {
-		fmt.Println("Memory usage too high: ", usedBandwidth / totalBandwidth * 100, "%")
+	memoryUsagePercent := (usedMemory / totalMemory) * 100
+	if memoryUsagePercent > 80 {
+		messages = append(messages, fmt.Sprintf("Memory usage is critically high: %.2f%%", memoryUsagePercent))
 	}
+
+	diskUsagePercent := (usedDisk / totalDisk) * 100
+	if diskUsagePercent > 90 {
+		messages = append(messages, fmt.Sprintf("Disk usage is critically high: %.2f%%", diskUsagePercent))
+	}
+
+	bandwidthUsagePercent := (usedBandwidth / totalBandwidth) * 100
+	if bandwidthUsagePercent > 75 {
+		messages = append(messages, fmt.Sprintf("Bandwidth usage is critically high: %.2f%%", bandwidthUsagePercent))
+	}
+
+	if len(messages) > 0 {
+		fmt.Println(strings.Join(messages, "\n"))
+	} else {
+		fmt.Println("All systems normal.")
+	}
+
 }
 
-func fetchServerStats(url string, headers map[string]string) (string, error) {
+func getServerStats(url string) (string, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", err
-	}
-
-	for k, v := range headers {
-		req.Header.Set(k, v)
 	}
 
 	resp, err := client.Do(req)
@@ -82,8 +95,25 @@ func fetchServerStats(url string, headers map[string]string) (string, error) {
 }
 
 
-func main(){
+func main() {
+	url := "http://srv.msk01.gigacorp.local/_stats"
 
+	for {
+		responseStr, err := getServerStats(url)
+		if err != nil {
+			fmt.Println("Error fetching stats:", err)
+			time.Sleep(10 * time.Second) // Ждем перед повторной попыткой
+			continue
+		}
 
+		stats, err := parseResponse(responseStr)
+		if err != nil {
+			fmt.Println("Error parsing stats:", err)
+			continue
+		}
 
+		analyzeStats(stats)
+
+		time.Sleep(10 * time.Second) // Задержка перед следующим запросом
+	}
 }
