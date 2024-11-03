@@ -98,22 +98,25 @@ func getServerStats(url string) (string, error) {
 func main() {
 	url := "http://srv.msk01.gigacorp.local/_stats"
 
+	errorCount := 0
+
 	for {
 		responseStr, err := getServerStats(url)
 		if err != nil {
 			fmt.Println("Error fetching stats:", err)
-			time.Sleep(10 * time.Second) // Ждем перед повторной попыткой
+			errorCount++
+			if errorCount >= 3 {
+				fmt.Println("Unable to fetch server statistics")
+				break
+			}
+			time.Sleep(2 * time.Second) 
 			continue
 		}
 
 		stats, err := parseResponse(responseStr)
-		if err != nil {
-			fmt.Println("Error parsing stats:", err)
-			continue
-		}
 
 		analyzeStats(stats)
-
-		time.Sleep(10 * time.Second) // Задержка перед следующим запросом
+		errorCount = 0 
+		time.Sleep(60 * time.Second) 
 	}
 }
