@@ -82,7 +82,7 @@ func checkThresholds(stats []float64) {
 	if totalMem > 0 { // Избегаем деления на ноль
 		memoryUsage := usedMem / totalMem
 		if memoryUsage > memoryUsageThresh {
-			fmt.Printf("Memory usage too high: %.0f%%\n", math.Round(memoryUsage*100))
+			fmt.Printf("Memory usage too high: %.0f%%\n", math.Floor(memoryUsage*100))
 		}
 	}
 
@@ -91,7 +91,7 @@ func checkThresholds(stats []float64) {
 		diskUsage := usedDisk / totalDisk
 		if diskUsage > diskSpaceThresh {
 			freeSpaceMB := (totalDisk - usedDisk) / (1024 * 1024)
-			fmt.Printf("Free disk space is too low: %.0f Mb left\n", math.Round(freeSpaceMB))
+			fmt.Printf("Free disk space is too low: %.0f Mb left\n", math.Floor(freeSpaceMB))
 		}
 	}
 
@@ -100,7 +100,7 @@ func checkThresholds(stats []float64) {
 		netUsage := usedNet / totalNet
 		if netUsage > networkUsageThresh {
 			freeBandwidthMbit := (totalNet - usedNet) / (1024 * 1024)
-			fmt.Printf("Network bandwidth usage high: %.0f Mbit/s available\n", math.Round(freeBandwidthMbit))
+			fmt.Printf("Network bandwidth usage high: %.0f Mbit/s available\n", math.Floor(freeBandwidthMbit))
 		}
 	}
 }
