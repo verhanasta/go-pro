@@ -11,13 +11,13 @@ import (
 
 // Конфигурация
 const (
-	serverURL         = "http://localhost:8080/_stats" // Измените на ваш URL
-	pollInterval      = 60 * time.Second              // Интервал опроса
-	errorThreshold    = 3                             // Количество ошибок перед выводом сообщения о недоступности данных
-	loadAverageThresh = 30                            // Порог для Load Average
-	memoryUsageThresh = 0.8                           // Порог для использования памяти (80%)
-	diskSpaceThresh   = 0.9                           // Порог для использования диска (90%)
-	networkUsageThresh = 0.9                          // Порог для использования сети (90%)
+	serverURL         = "http://srv.msk01.gigacorp.local/_stats" // Используем правильный URL
+	pollInterval      = 60 * time.Second                        // Интервал опроса
+	errorThreshold    = 3                                       // Количество ошибок перед выводом сообщения о недоступности данных
+	loadAverageThresh = 30                                      // Порог для Load Average
+	memoryUsageThresh = 0.8                                     // Порог для использования памяти (80%)
+	diskSpaceThresh   = 0.9                                     // Порог для использования диска (90%)
+	networkUsageThresh = 0.9                                    // Порог для использования сети (90%)
 )
 
 var errorCount int
@@ -26,7 +26,7 @@ func fetchServerStats() ([]float64, error) {
 	resp, err := http.Get(serverURL)
 	if err != nil {
 		errorCount++
-		return nil, err
+		return nil, fmt.Errorf("HTTP request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -39,7 +39,7 @@ func fetchServerStats() ([]float64, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		errorCount++
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	// Разделяем данные по запятым
@@ -108,6 +108,7 @@ func main() {
 	for {
 		stats, err := fetchServerStats()
 		if err != nil {
+			fmt.Printf("Error: %v\n", err) // Логируем ошибку для отладки
 			if errorCount >= errorThreshold {
 				fmt.Println("Unable to fetch server statistic")
 			}
