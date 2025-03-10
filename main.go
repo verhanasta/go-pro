@@ -11,13 +11,13 @@ import (
 
 // Конфигурация
 const (
-	serverURL         = "http://srv.msk01.gigacorp.local/_stats"
-	pollInterval      = 60 * time.Second // Интервал опроса
-	errorThreshold    = 3               // Количество ошибок перед выводом сообщения о недоступности данных
-	loadAverageThresh = 30              // Порог для Load Average
-	memoryUsageThresh = 0.8             // Порог для использования памяти (80%)
-	diskSpaceThresh   = 0.9             // Порог для использования диска (90%)
-	networkUsageThresh = 0.9            // Порог для использования сети (90%)
+	serverURL         = "http://localhost:8080/_stats" // Измените на ваш URL
+	pollInterval      = 60 * time.Second              // Интервал опроса
+	errorThreshold    = 3                             // Количество ошибок перед выводом сообщения о недоступности данных
+	loadAverageThresh = 30                            // Порог для Load Average
+	memoryUsageThresh = 0.8                           // Порог для использования памяти (80%)
+	diskSpaceThresh   = 0.9                           // Порог для использования диска (90%)
+	networkUsageThresh = 0.9                          // Порог для использования сети (90%)
 )
 
 var errorCount int
@@ -35,7 +35,7 @@ func fetchServerStats() ([]float64, error) {
 		return nil, fmt.Errorf("HTTP status: %s", resp.Status)
 	}
 
-	// Используем io.ReadAll вместо ioutil.ReadAll
+	// Чтение тела ответа
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		errorCount++
@@ -44,15 +44,15 @@ func fetchServerStats() ([]float64, error) {
 
 	// Разделяем данные по запятым
 	parts := strings.Split(strings.TrimSpace(string(body)), ",")
-	if len(parts) != 6 {
+	if len(parts) != 7 { // Ожидаем 7 значений
 		errorCount++
-		return nil, fmt.Errorf("invalid data format: expected 6 values, got %d", len(parts))
+		return nil, fmt.Errorf("invalid data format: expected 7 values, got %d", len(parts))
 	}
 
 	// Преобразуем строки в числа
-	stats := make([]float64, 6)
+	stats := make([]float64, 7)
 	for i, part := range parts {
-		stats[i], err = strconv.ParseFloat(part, 64)
+		stats[i], err = strconv.ParseFloat(strings.TrimSpace(part), 64)
 		if err != nil {
 			errorCount++
 			return nil, fmt.Errorf("invalid data format: %v", err)
@@ -74,27 +74,33 @@ func checkThresholds(stats []float64) {
 
 	// Проверка Load Average
 	if loadAvg > loadAverageThresh {
-		fmt.Printf("Load Average is too high: %.2f\n", loadAvg)
+		fmt.Printf("Load Average is too high: %.0f\n", loadAvg)
 	}
 
 	// Проверка использования памяти
-	memoryUsage := usedMem / totalMem
-	if memoryUsage > memoryUsageThresh {
-		fmt.Printf("Memory usage too high: %.2f%%\n", memoryUsage*100)
+	if totalMem > 0 { // Избегаем деления на ноль
+		memoryUsage := usedMem / totalMem
+		if memoryUsage > memoryUsageThresh {
+			fmt.Printf("Memory usage too high: %.0f%%\n", memoryUsage*100)
+		}
 	}
 
 	// Проверка свободного места на диске
-	diskUsage := usedDisk / totalDisk
-	if diskUsage > diskSpaceThresh {
-		freeSpaceMB := (totalDisk - usedDisk) / (1024 * 1024)
-		fmt.Printf("Free disk space is too low: %.2f Mb left\n", freeSpaceMB)
+	if totalDisk > 0 { // Избегаем деления на ноль
+		diskUsage := usedDisk / totalDisk
+		if diskUsage > diskSpaceThresh {
+			freeSpaceMB := (totalDisk - usedDisk) / (1024 * 1024)
+			fmt.Printf("Free disk space is too low: %.0f Mb left\n", freeSpaceMB)
+		}
 	}
 
 	// Проверка загруженности сети
-	netUsage := usedNet / totalNet
-	if netUsage > networkUsageThresh {
-		freeBandwidthMbit := (totalNet - usedNet) / (1024 * 1024)
-		fmt.Printf("Network bandwidth usage high: %.2f Mbit/s available\n", freeBandwidthMbit)
+	if totalNet > 0 { // Избегаем деления на ноль
+		netUsage := usedNet / totalNet
+		if netUsage > networkUsageThresh {
+			freeBandwidthMbit := (totalNet - usedNet) / (1024 * 1024)
+			fmt.Printf("Network bandwidth usage high: %.0f Mbit/s available\n", freeBandwidthMbit)
+		}
 	}
 }
 
