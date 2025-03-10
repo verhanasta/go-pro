@@ -43,12 +43,8 @@ func main() {
 	for response := range resultStream() {
 		metrics, err := parseMetrics(response)
 		if err != nil {
-			fmt.Printf("Error parsing metrics: %v\n", err)
 			continue
 		}
-
-		// Логирование для отладки
-		fmt.Printf("Metrics: %+v\n", metrics)
 
 		metricList := []Metric{
 			{
