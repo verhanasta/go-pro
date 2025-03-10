@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
