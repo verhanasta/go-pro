@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,13 +11,13 @@ import (
 
 // Конфигурация
 const (
-	serverURL          = "http://srv.msk01.gigacorp.local/_stats"
-	pollInterval       = 60 * time.Second // Интервал опроса
-	errorThreshold     = 3
-	loadAverageThresh  = 30
-	memoryUsageThresh  = 0.8
-	diskSpaceThresh    = 0.9
-	networkUsageThresh = 0.9
+	serverURL         = "http://srv.msk01.gigacorp.local/_stats"
+	pollInterval      = 60 * time.Second // Интервал опроса
+	errorThreshold    = 3               // Количество ошибок перед выводом сообщения о недоступности данных
+	loadAverageThresh = 30              // Порог для Load Average
+	memoryUsageThresh = 0.8             // Порог для использования памяти (80%)
+	diskSpaceThresh   = 0.9             // Порог для использования диска (90%)
+	networkUsageThresh = 0.9            // Порог для использования сети (90%)
 )
 
 var errorCount int
@@ -35,7 +35,8 @@ func fetchServerStats() ([]float64, error) {
 		return nil, fmt.Errorf("HTTP status: %s", resp.Status)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	// Используем io.ReadAll вместо ioutil.ReadAll
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		errorCount++
 		return nil, err
@@ -58,7 +59,7 @@ func fetchServerStats() ([]float64, error) {
 		}
 	}
 
-	errorCount = 0
+	errorCount = 0 // Сброс счетчика ошибок при успешном запросе
 	return stats, nil
 }
 
