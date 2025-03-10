@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -110,7 +111,7 @@ func main() {
 		if err != nil {
 			fmt.Printf("Error: %v\n", err) // Логируем ошибку для отладки
 			if errorCount >= errorThreshold {
-				fmt.Println("Unable to fetch server statistic")
+				fmt.Println("Unable to fetch server statistics")
 			}
 		} else {
 			checkThresholds(stats)
