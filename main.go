@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -42,8 +43,12 @@ func main() {
 	for response := range resultStream() {
 		metrics, err := parseMetrics(response)
 		if err != nil {
+			fmt.Printf("Error parsing metrics: %v\n", err)
 			continue
 		}
+
+		// Логирование для отладки
+		fmt.Printf("Metrics: %+v\n", metrics)
 
 		metricList := []Metric{
 			{
@@ -111,13 +116,13 @@ func calculatePercentageUsage(capacity, usage int) (int, int) {
 func calculateFreeResource(capacity, usage int) (int, int) {
 	usagePercent := usage * fullPercent / capacity
 	freeResource := (capacity - usage) / bytesInMegabyte
-	return usagePercent, freeResource
+	return usagePercent, int(math.Floor(float64(freeResource)))
 }
 
 func calculateFreeNetworkResource(capacity, usage int) (int, int) {
 	usagePercent := usage * fullPercent / capacity
 	freeResource := (capacity - usage) / bytesInMegabit
-	return usagePercent, freeResource
+	return usagePercent, int(math.Floor(float64(freeResource)))
 }
 
 func initiatePolling(url string, retries int) func() chan string {
