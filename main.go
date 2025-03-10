@@ -3,120 +3,212 @@ package main
 import (
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// Конфигурация
 const (
-	serverURL         = "http://srv.msk01.gigacorp.local/_stats" // Используем правильный URL
-	pollInterval      = 60 * time.Second                        // Интервал опроса
-	errorThreshold    = 3                                       // Количество ошибок перед выводом сообщения о недоступности данных
-	loadAverageThresh = 30                                      // Порог для Load Average
-	memoryUsageThresh = 0.8                                     // Порог для использования памяти (80%)
-	diskSpaceThresh   = 0.9                                     // Порог для использования диска (90%)
-	networkUsageThresh = 0.9                                    // Порог для использования сети (90%)
+	serverURL       = "http://srv.msk01.gigacorp.local/_stats"
+	maxRetryCount   = 3                      // Максимальное количество повторов при ошибках
+	httpTimeout     = 5 * time.Second        // Таймаут для HTTP-запроса
+	requestInterval = 500 * time.Millisecond // Интервал между запросами
+
+	expectedMetricsLength = 7 // Ожидаемое количество метрик в ответе от сервера
+
+	cpuLoadThreshold      = 30 // Порог для нагрузки CPU
+	memoryUsageThreshold  = 80 // Порог для использования памяти
+	diskUsageThreshold    = 90 // Порог для использования дискового пространства
+	networkUsageThreshold = 90 // Порог для использования пропускной способности сети
+
+	bytesInMegabyte = 1024 * 1024 // Количество байтов в одном мегабайте
+	bytesInMegabit  = 1000 * 1000 // Количество байтов в одном мегабите
+	fullPercent     = 100         // Используется для расчета процентного использования ресурсов
 )
 
-var errorCount int
-
-func fetchServerStats() ([]float64, error) {
-	resp, err := http.Get(serverURL)
-	if err != nil {
-		errorCount++
-		return nil, fmt.Errorf("HTTP request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		errorCount++
-		return nil, fmt.Errorf("HTTP status: %s", resp.Status)
-	}
-
-	// Чтение тела ответа
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		errorCount++
-		return nil, fmt.Errorf("failed to read response body: %v", err)
-	}
-
-	// Разделяем данные по запятым
-	parts := strings.Split(strings.TrimSpace(string(body)), ",")
-	if len(parts) != 7 { // Ожидаем 7 значений
-		errorCount++
-		return nil, fmt.Errorf("invalid data format: expected 7 values, got %d", len(parts))
-	}
-
-	// Преобразуем строки в числа
-	stats := make([]float64, 7)
-	for i, part := range parts {
-		stats[i], err = strconv.ParseFloat(strings.TrimSpace(part), 64)
-		if err != nil {
-			errorCount++
-			return nil, fmt.Errorf("invalid data format: %v", err)
-		}
-	}
-
-	errorCount = 0 // Сброс счетчика ошибок при успешном запросе
-	return stats, nil
-}
-
-func checkThresholds(stats []float64) {
-	loadAvg := stats[0]
-	totalMem := stats[1]
-	usedMem := stats[2]
-	totalDisk := stats[3]
-	usedDisk := stats[4]
-	totalNet := stats[5]
-	usedNet := stats[6]
-
-	// Проверка Load Average
-	if loadAvg > loadAverageThresh {
-		fmt.Printf("Load Average is too high: %.0f\n", loadAvg)
-	}
-
-	// Проверка использования памяти
-	if totalMem > 0 { // Избегаем деления на ноль
-		memoryUsage := usedMem / totalMem
-		if memoryUsage > memoryUsageThresh {
-			fmt.Printf("Memory usage too high: %.0f%%\n", math.Floor(memoryUsage*100))
-		}
-	}
-
-	// Проверка свободного места на диске
-	if totalDisk > 0 { // Избегаем деления на ноль
-		diskUsage := usedDisk / totalDisk
-		if diskUsage > diskSpaceThresh {
-			freeSpaceMB := (totalDisk - usedDisk) / (1024 * 1024)
-			fmt.Printf("Free disk space is too low: %.0f Mb left\n", math.Floor(freeSpaceMB))
-		}
-	}
-
-	// Проверка загруженности сети
-	if totalNet > 0 { // Избегаем деления на ноль
-		netUsage := usedNet / totalNet
-		if netUsage > networkUsageThresh {
-			freeBandwidthMbit := (totalNet - usedNet) / (1024 * 1024)
-			fmt.Printf("Network bandwidth usage high: %.0f Mbit/s available\n", math.Floor(freeBandwidthMbit))
-		}
-	}
+type Metric struct {
+	capacity   int
+	usage      int
+	threshold  int
+	message    string
+	unit       string
+	checkUsage func(capacity, usage int) (int, int)
 }
 
 func main() {
-	for {
-		stats, err := fetchServerStats()
+	resultStream := initiatePolling(serverURL, maxRetryCount)
+
+	for response := range resultStream() {
+		metrics, err := parseMetrics(response)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err) // Логируем ошибку для отладки
-			if errorCount >= errorThreshold {
-				fmt.Println("Unable to fetch server statistics")
-			}
-		} else {
-			checkThresholds(stats)
+			continue
 		}
 
-		time.Sleep(pollInterval)
+		metricList := []Metric{
+			{
+				capacity:   metrics.CPULoad,
+				usage:      metrics.CPULoad,
+				threshold:  cpuLoadThreshold,
+				message:    "Load Average is too high: %d\n",
+				unit:       "",
+				checkUsage: calculateDirectUsage,
+			},
+			{
+				capacity:   metrics.MemoryCapacity,
+				usage:      metrics.MemoryUsage,
+				threshold:  memoryUsageThreshold,
+				message:    "Memory usage too high: %d%%\n",
+				unit:       "%",
+				checkUsage: calculatePercentageUsage,
+			},
+			{
+				capacity:   metrics.DiskCapacity,
+				usage:      metrics.DiskUsage,
+				threshold:  diskUsageThreshold,
+				message:    "Free disk space is too low: %d Mb left\n",
+				unit:       "Mb",
+				checkUsage: calculateFreeResource,
+			},
+			{
+				capacity:   metrics.NetworkCapacity,
+				usage:      metrics.NetworkActivity,
+				threshold:  networkUsageThreshold,
+				message:    "Network bandwidth usage high: %d Mbit/s available\n",
+				unit:       "Mbit/s",
+				checkUsage: calculateFreeNetworkResource,
+			},
+		}
+
+		for _, metric := range metricList {
+			checkResourceUsage(metric)
+		}
 	}
+}
+
+func checkResourceUsage(m Metric) {
+	usagePercent, freeResource := m.checkUsage(m.capacity, m.usage)
+
+	if usagePercent > m.threshold {
+		if m.unit == "%" || m.unit == "" {
+			fmt.Printf(m.message, usagePercent)
+		} else {
+			fmt.Printf(m.message, freeResource)
+		}
+	}
+}
+
+func calculateDirectUsage(capacity, _ int) (int, int) {
+	usagePercent := capacity
+	return usagePercent, usagePercent
+}
+
+func calculatePercentageUsage(capacity, usage int) (int, int) {
+	usagePercent := usage * fullPercent / capacity
+	return usagePercent, usagePercent
+}
+
+func calculateFreeResource(capacity, usage int) (int, int) {
+	usagePercent := usage * fullPercent / capacity
+	freeResource := (capacity - usage) / bytesInMegabyte
+	return usagePercent, freeResource
+}
+
+func calculateFreeNetworkResource(capacity, usage int) (int, int) {
+	usagePercent := usage * fullPercent / capacity
+	freeResource := (capacity - usage) / bytesInMegabit
+	return usagePercent, freeResource
+}
+
+func initiatePolling(url string, retries int) func() chan string {
+	return func() chan string {
+		dataChannel := make(chan string, 3)
+		client := http.Client{Timeout: httpTimeout}
+		errorCounter := 0
+
+		go func() {
+			defer close(dataChannel)
+
+			for {
+				time.Sleep(requestInterval)
+
+				if errorCounter >= retries {
+					fmt.Println("Unable to fetch server statistics")
+					break
+				}
+
+				response, err := client.Get(url)
+				errorCounter = handleResponseError(response, err, errorCounter)
+				if errorCounter > 0 {
+					continue
+				}
+
+				body, err := io.ReadAll(response.Body)
+				if err != nil {
+					errorCounter = handlePollingError(err, errorCounter, "failed to parse response")
+					continue
+				}
+
+				response.Body.Close()
+				dataChannel <- string(body)
+
+				errorCounter = 0
+			}
+		}()
+
+		return dataChannel
+	}
+}
+
+func handleResponseError(response *http.Response, err error, errorCounter int) int {
+	if err != nil {
+		return handlePollingError(err, errorCounter, "failed to send request")
+	}
+	if response.StatusCode != http.StatusOK {
+		return handlePollingError(fmt.Errorf("invalid status code: %d", response.StatusCode), errorCounter, "")
+	}
+	return errorCounter
+}
+
+func handlePollingError(err error, errorCounter int, message string) int {
+	if message != "" {
+		fmt.Printf("%s: %s\n", message, err)
+	}
+	return errorCounter + 1
+}
+
+type ServerMetrics struct {
+	CPULoad         int
+	MemoryCapacity  int
+	MemoryUsage     int
+	DiskCapacity    int
+	DiskUsage       int
+	NetworkCapacity int
+	NetworkActivity int
+}
+
+func parseMetrics(data string) (ServerMetrics, error) {
+	parts := strings.Split(data, ",")
+	if len(parts) != expectedMetricsLength {
+		return ServerMetrics{}, fmt.Errorf("invalid data format")
+	}
+
+	values := make([]int, expectedMetricsLength)
+	for i, part := range parts {
+		value, err := strconv.Atoi(part)
+		if err != nil {
+			return ServerMetrics{}, fmt.Errorf("invalid number: %s", part)
+		}
+		values[i] = value
+	}
+
+	return ServerMetrics{
+		CPULoad:         values[0],
+		MemoryCapacity:  values[1],
+		MemoryUsage:     values[2],
+		DiskCapacity:    values[3],
+		DiskUsage:       values[4],
+		NetworkCapacity: values[5],
+		NetworkActivity: values[6],
+	}, nil
 }
