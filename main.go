@@ -112,13 +112,13 @@ func calculatePercentageUsage(capacity, usage int) (int, int) {
 func calculateFreeResource(capacity, usage int) (int, int) {
 	usagePercent := usage * fullPercent / capacity
 	freeResource := (capacity - usage) / bytesInMegabyte
-	return usagePercent, int(math.Floor(float64(freeResource)))
+	return usagePercent, freeResource
 }
 
 func calculateFreeNetworkResource(capacity, usage int) (int, int) {
 	usagePercent := usage * fullPercent / capacity
 	freeResource := (capacity - usage) / bytesInMegabit
-	return usagePercent, int(math.Floor(float64(freeResource)))
+	return usagePercent, freeResource
 }
 
 func initiatePolling(url string, retries int) func() chan string {
